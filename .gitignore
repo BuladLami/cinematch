@@ -25,3 +25,6 @@ movies.csv
 
 # Office lock files
 ~$*
+
+# Project write-up documents: kept locally, not uploaded
+Details*.docx
