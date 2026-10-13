@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# The source dataset is not shared: it is ~900 MB (credits.csv and ratings.csv
+# are over GitHub's 100 MB limit) and the MovieLens ratings have their own
+# terms.  Download "The Movies Dataset" from Kaggle into "movies data/" to
+# rebuild the catalogue or to add MovieLens viewers to collaborative filtering.
+movies data/
+
+# Everything CineMatch creates while running -- the accounts database, each
+# user's My List and activity, logs, caches, backups -- stays on the machine.
+# The prebuilt catalogue is committed so the app runs straight after cloning.
+data/*
+!data/catalogue.csv
+
+# Left over from an earlier version
+movies.csv
+
+# Office lock files
+~$*

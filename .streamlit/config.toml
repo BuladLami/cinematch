@@ -1,0 +1,18 @@
+# CineMatch look and feel.
+# Setting the theme here (instead of only in CSS) means Streamlit's own widgets
+# -- inputs, dropdowns, tables, sliders -- are drawn in the dark cinema palette
+# too, so nothing flashes white while the page loads.
+
+[theme]
+base                     = "dark"
+primaryColor             = "#7C5CFF"   # buttons, focus rings, active nav item
+backgroundColor          = "#0B0E14"   # the page itself
+secondaryBackgroundColor = "#151A24"   # sidebar, tables, expanders
+textColor                = "#EEF1F7"
+font                     = "sans serif"
+
+[server]
+headless = true
+
+[browser]
+gatherUsageStats = false

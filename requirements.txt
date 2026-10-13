@@ -1,0 +1,11 @@
+# CineMatch dependencies
+# Install with:  pip install -r requirements.txt
+# Pinned to the versions the test suite passes with, so a deployment
+# (Streamlit Community Cloud) installs exactly what was tested.
+# They need Python 3.11 or newer (pandas 3).
+
+pandas==3.0.5          # reading, merging, filtering and writing the CSV data
+numpy==2.5.2           # the arrays under pandas, scikit-learn and SciPy
+scikit-learn==1.9.0    # TfidfVectorizer and cosine_similarity (the ML part)
+scipy==1.18.1          # sparse matrices for collaborative filtering
+streamlit==1.62.0      # the web interface (pop-up dialogs, live search, editable table)
