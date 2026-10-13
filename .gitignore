@@ -1,3 +1,7 @@
+# Secrets (the admin password).  Never commit them.
+.streamlit/secrets.toml
+.env
+
 # Python
 __pycache__/
 *.pyc
