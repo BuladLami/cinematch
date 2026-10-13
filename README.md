@@ -42,7 +42,10 @@ Everyone signs in first. There are two roles:
 
 The first run creates one admin, **`admin` / `admin123`**. Sign in with it and
 change the password from the sidebar (the app reminds you until you do). New
-people sign up from the *Create account* tab and are always users; only an
+people sign up from the *Create account* tab and are always users (an
+*Account Created!* pop-up then offers **Proceed to CineMatch**, which signs them
+in, or **Back to sign in**, which returns to the sign-in tab with the new
+username filled in); only an
 admin can make another admin. Passwords are stored hashed (PBKDF2-SHA256 with a
 random salt per account), never as typed.
 
@@ -136,7 +139,9 @@ The Home page opens with a *Picked for you* shelf from the pattern and a
    *Recently viewed*, *Continue watching* (from My List), *Trending now*,
    *Highest rated* and *Browse by genre*.
 2. **Discover**: search with live title suggestions, filters for genre,
-   minimum rating and decade, a paged poster wall, and *Surprise me*.
+   minimum rating and decade, a paged poster wall sorted **A–Z** (Home and
+   *Recommended* already show what is popular; when searching, titles that start
+   with the search come first), and *Surprise me*.
 3. **My List**: your saved movies with counts per status, a filter and sort,
    a table for editing several movies at once, a CSV download, and *Recommended
    for you*.

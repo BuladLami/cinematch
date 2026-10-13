@@ -2,7 +2,8 @@
 ui/recommend.py -- The Discover page (browse, then get recommendations).
 
 The flow the user follows:
-    1. search a title, or filter by genre / rating / decade
+    1. search a title, or filter by genre / rating / decade (results are A-Z;
+       Home and Recommended already show what is popular)
     2. click a poster from the results wall          -> details pop-up
     3. press "Find movies like this"                 -> recommendations pop-up
     4. choose 5 or 10                                -> matches with a score
@@ -93,12 +94,25 @@ def _browse(movies: pd.DataFrame, engine) -> pd.DataFrame:
         results = results[results["vote_average"] >= float(min_rating[0])]
     results = _decade_filter(results, decade)
 
-    # With no search term, the wall should still look like a front page, so the
-    # most popular titles lead.
-    if not query and "popularity" in results.columns:
-        results = results.sort_values("popularity", ascending=False)
+    return _alphabetical(results, query)
 
-    return results
+
+def _title_key(titles: pd.Series) -> pd.Series:
+    """Sort key: lowercase, ignoring leading quotes and brackets ("(500) Days" -> "500) days")."""
+    return titles.astype(str).str.lower().str.replace(r"^[^0-9a-z]+", "", regex=True)
+
+
+def _alphabetical(results: pd.DataFrame, query: str = "") -> pd.DataFrame:
+    """Discover lists titles A-Z (Home and Recommended already show what is popular).
+
+    When searching, titles that START with the search come first, so "up" puts
+    Up ahead of every title that merely contains it; each group is then A-Z.
+    """
+    key = _title_key(results["title"])
+    starts = key.str.startswith(query.strip().lower()) if query else pd.Series(True, results.index)
+    order = pd.DataFrame({"starts": ~starts, "key": key, "year": results["year"]},
+                         index=results.index)
+    return results.loc[order.sort_values(["starts", "key", "year"], kind="stable").index]
 
 
 def _choose(index) -> None:
@@ -155,7 +169,7 @@ def _browse_wall(results: pd.DataFrame) -> None:
 
     components.row_header(
         "Browse results",
-        f"{len(results):,} titles  -  showing {page * PAGE_SIZE + 1}"
+        f"{len(results):,} titles, A-Z  -  showing {page * PAGE_SIZE + 1}"
         f"-{page * PAGE_SIZE + len(window)}",
     )
 

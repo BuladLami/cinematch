@@ -318,9 +318,9 @@ and `load_movielens()` (`st.cache_resource`), `behaviour_model(movies, exclude)`
 #### The pages
 | Page | Module | Notes |
 |---|---|---|
-| Sign in / Create account | `login.py` | Sign-up always makes a `user` |
+| Sign in / Create account | `login.py` | Sign-up always makes a `user`; an *Account Created!* pop-up (`st.dialog`, not dismissible) offers *Proceed to CineMatch* (signs in) or *Back to sign in* (sign-in tab, username filled in) |
 | Home | `dashboard.py` | *Picked for you* (learned pattern), *Recently viewed*, *Continue watching*, Trending, Highest rated, genre pills (recorded) |
-| Discover | `recommend.py` | Search and genre filter (recorded), paged wall, *Find movies like this* (recorded) |
+| Discover | `recommend.py` | Search and genre filter (recorded), paged wall sorted A–Z by `_alphabetical()` (leading quotes/brackets ignored; when searching, titles that start with the search come first), *Find movies like this* (recorded) |
 | Recommended | `watch_pattern.py` | Top picks for you (with reasons), *Because you liked …* rows (`patterns.because_you_liked()`), Finish the series; folded: what CineMatch has noticed, and the learned movies (forget / clear) + recent activity. Shows popular films until something is learned |
 | My List | `mylist.py` | Tiles, counts, filter, sort, bulk editor, download, *Recommended for you* |
 | Admin dashboard | `admin.py` | Accounts, users with a pattern, actions recorded, genres liked, latest log |
