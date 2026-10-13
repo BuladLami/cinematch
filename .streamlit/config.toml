@@ -13,6 +13,9 @@ font                     = "sans serif"
 
 [server]
 headless = true
+# Reload the app as soon as a code file is saved, so a change always shows up
+# without restarting "streamlit run app.py".
+runOnSave = true
 
 [browser]
 gatherUsageStats = false
