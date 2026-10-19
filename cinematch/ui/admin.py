@@ -103,8 +103,11 @@ def render_users(movies: pd.DataFrame, report: dict, engine) -> None:
         "last_login": "Last sign-in", "actions": "Actions recorded",
         "my_list": "On My List"})
     db = accounts.database_info()
-    st.caption(f"Accounts are stored in the SQLite database `{db['path'].name}` "
-               f"({db['size_kb']:.0f} KB): {db['admins']} admin(s), {db['users']} user(s).")
+    st.caption(f"Accounts are stored in the {db['kind']} database `{db['where']}` "
+               f"({db['size_kb']:.0f} KB): {db['admins']} admin(s), {db['users']} user(s). "
+               + ("Every device signs in against it." if db["online"] else
+                  "It is on this computer only; set DATABASE_URL to share accounts "
+                  "between devices."))
 
     create_column, edit_column = st.columns(2, gap="large")
 

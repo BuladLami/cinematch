@@ -51,9 +51,13 @@ random salt per account), never as typed.
 
 #### The users database
 
-Accounts are kept in a **SQLite** database, `data/cinematch.db`, created
-automatically on the first run. SQLite is one file and is built into Python
-(`sqlite3`), so there is no database server to install or start.
+By default, accounts are kept in a **SQLite** database, `data/cinematch.db`,
+created automatically on the first run. SQLite is one file and is built into
+Python (`sqlite3`), so there is no database server to install or start, but
+the file is only on the computer the app runs on. To use the same accounts
+on every device, put them in an online PostgreSQL database instead (see
+[Sharing accounts between devices](#sharing-accounts-between-devices)). The
+table and its rules are the same in both.
 
 ```sql
 CREATE TABLE users (
@@ -75,8 +79,8 @@ into the database:
 |---|---|
 | A role is only `admin` or `user` | `CHECK (role IN ('admin', 'user'))` |
 | No two accounts share a username | `UNIQUE` |
-| The last admin can't be deleted or made a user | triggers `keep_an_admin_on_delete` and `keep_an_admin_on_update` |
-| Typed input is never run as SQL | every query uses `?` placeholders |
+| The last admin can't be deleted or made a user | triggers `keep_an_admin_on_delete` and `keep_an_admin_on_update` (PostgreSQL: `keep_an_admin`) |
+| Typed input is never run as SQL | every query uses placeholders |
 | A failed change leaves nothing half-saved | each action runs in one transaction |
 
 To look inside it, open `data/cinematch.db` with any SQLite viewer (for
@@ -85,6 +89,42 @@ example *DB Browser for SQLite*), or run:
 ```
 python -c "import sqlite3; print(sqlite3.connect('data/cinematch.db').execute('SELECT id, username, role, created_on, last_login FROM users').fetchall())"
 ```
+
+#### Sharing accounts between devices
+
+When `DATABASE_URL` is set, accounts go into that online PostgreSQL database
+instead of `data/cinematch.db`. Every computer and every deployment that has
+the URL then signs in against the same accounts. A free database is enough:
+
+1. Sign up at <https://neon.tech> (free plan), create a project, and copy its
+   **connection string**. It looks like
+   `postgresql://user:password@ep-something.aws.neon.tech/neondb?sslmode=require`.
+   (Supabase works too. Use its *Session pooler* connection string.)
+2. Put it in `.streamlit/secrets.toml` on each computer that runs the app.
+   The file is git-ignored, so the password is never committed:
+
+   ```toml
+   DATABASE_URL = "postgresql://user:password@ep-something.aws.neon.tech/neondb?sslmode=require"
+   ```
+
+   On Streamlit Community Cloud, paste the same line into the app's
+   **Secrets**.
+3. Install the driver (`pip install -r requirements.txt`) and start the app.
+   The `users` table and its rules are created on the first run.
+4. To bring along the accounts already made on this computer, run this once
+   **before** first starting the app with the URL. Passwords keep working,
+   because the hashes and salts are copied as they are:
+
+   ```
+   python -m cinematch.accounts
+   ```
+
+   If the app has already created a first-run admin online, that admin is
+   kept and the local one is skipped; every other account is still copied.
+
+The admin's **Manage users** page shows which database is in use. Only the
+accounts move online. Each user's My List, their activity and the activity log
+are still files in `data/` on the computer that runs the app.
 
 ### Recommended: picks learned from your behaviour, no uploads
 
@@ -412,11 +452,12 @@ a half-written file.
 | scikit-learn | `TfidfVectorizer`, `cosine_similarity` |
 | SciPy | Sparse item x viewer matrix for collaborative filtering |
 | Streamlit (1.50+) | The web interface, pop-up dialogs, the editable table |
-| SQLite (`sqlite3`, built in) | The users database (admin / user accounts) |
+| SQLite (`sqlite3`, built in) | The users database (admin / user accounts), by default |
+| psycopg 3 + psycopg-pool | The same users database in online PostgreSQL, when `DATABASE_URL` is set |
 | Standard library | `csv`, `pathlib`, `pickle`, `hashlib`, `re`, `os`, `json`, `urllib` |
 
-No database server or cloud service is used: accounts are in a SQLite file,
-and everything else is CSV and text files.
+No database server is needed: accounts are in a SQLite file unless an online
+PostgreSQL database is set, and everything else is CSV and text files.
 
 ## Project structure
 
@@ -424,7 +465,7 @@ and everything else is CSV and text files.
 py prog/
 ├── app.py                  entry point
 ├── inspect_dataset.py      dataset report
-├── test_cinematch.py       automated tests (162 checks)
+├── test_cinematch.py       automated tests (166 checks)
 ├── requirements.txt
 ├── movies data/            source dataset (READ-ONLY)
 │   ├── movies_metadata.csv
@@ -434,7 +475,7 @@ py prog/
 │   └── links_small.csv     MovieLens id -> TMDB id (optional)
 ├── cinematch/
 │   ├── config.py           paths, filters, weights, list statuses
-│   ├── accounts.py         users database (SQLite), sign-in, roles, activity log
+│   ├── accounts.py         users database (SQLite or PostgreSQL), sign-in, roles, log
 │   ├── activity.py         recording behaviour, learning interest scores from it
 │   ├── collaborative.py    item-item collaborative filtering (MovieLens + users)
 │   ├── patterns.py         finding the watch pattern, recommending from it
@@ -503,9 +544,12 @@ from Kaggle into `movies data/` next to `app.py` if you want to:
 **Storage is temporary on Community Cloud.** The app writes accounts, My Lists
 and activity to `data/` on the server's disk, and that disk is wiped whenever
 the app restarts or is redeployed (after a code push, or after the app sleeps
-from inactivity). Everything works while it runs, but accounts and what
-CineMatch has learned start over after a restart; the admin is recreated from
-the secret. Keeping them would need an external database.
+from inactivity). Everything works while it runs, but what CineMatch has
+learned starts over after a restart. Accounts start over too, unless you add a
+`DATABASE_URL` secret (see
+[Sharing accounts between devices](#sharing-accounts-between-devices)); with
+it, accounts are kept online and survive restarts. Without it, the admin is
+recreated from the secret.
 
 ## How to run
 
@@ -527,9 +571,12 @@ python -m cinematch.posters    # refresh poster links (needs a TMDB key)
 
 ## Testing
 
-`python test_cinematch.py` runs **162 checks in 11 groups**, all passing. It
+`python test_cinematch.py` runs **166 checks in 11 groups**, all passing. It
 needs no Streamlit, it saves and restores `data/my_list.csv`, and groups 8-9
-run in a scratch folder that is deleted afterwards.
+run in a scratch folder that is deleted afterwards. Group 8b adds 15 more
+checks of the online accounts database when `CINEMATCH_TEST_DATABASE_URL` is
+set to a PostgreSQL URL (they run in a throwaway `cinematch_test` schema, so
+the real accounts are never touched).
 
 | Group | What is checked |
 |---|---|
@@ -540,7 +587,8 @@ run in a scratch folder that is deleted afterwards.
 | 5. Caching | Written, reused, rejected after a data change |
 | 6. My List CRUD | Every action changes the file; bad input refused; the list steers recommendations |
 | 7. Messy data | A movie with no text returns nothing instead of crashing |
-| 8. Accounts | Default admin, hashed passwords, wrong/duplicate/short/path-like input refused, role rules, own My List per user, delete removes the folder, the log; and straight SQL against the database: bad roles, duplicates and removing the last admin are refused, injection text is harmless |
+| 8. Accounts | Default admin, hashed passwords, wrong/duplicate/short/path-like input refused, role rules, own My List per user, delete removes the folder, the log; and straight SQL against the database: bad roles, duplicates and removing the last admin are refused, injection text is harmless; accounts copied to a new database keep their passwords |
+| 8b. Online accounts | The same rules in PostgreSQL (only when `CINEMATCH_TEST_DATABASE_URL` is set) |
 | 9. Learning from activity | Pick > search > view, 30-day half-life, click cap, typed searches spread over their hits, genre browsing, ordering by recency, exact vs. typed searches recorded, My List and ratings raise scores, low ratings become dislikes, forget / clear, account deletion removes activity |
 | 10. Collaborative filtering | Co-liked movies are close, unrated movies have no behaviour, MovieLens loads and is centred per viewer, Toy Story's neighbours are family films, app accounts become viewers |
 | 11. Patterns | Recurring director, unfinished series, decade, recent shift to sci-fi, disliked movies left out, nothing already touched recommended, the series sequel ranks first, behaviour feeds the ranking, works without it, reasons on every pick, "Because you liked" rows without repeats |

@@ -9,3 +9,5 @@ numpy==2.5.2           # the arrays under pandas, scikit-learn and SciPy
 scikit-learn==1.9.0    # TfidfVectorizer and cosine_similarity (the ML part)
 scipy==1.18.1          # sparse matrices for collaborative filtering
 streamlit==1.62.0      # the web interface (pop-up dialogs, live search, editable table)
+psycopg[binary]==3.3.6 # PostgreSQL driver: accounts in an online database (DATABASE_URL)
+psycopg-pool==3.3.3    # keeps those database connections open between page loads

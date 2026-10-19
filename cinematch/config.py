@@ -42,9 +42,10 @@ MY_LIST_CSV = DATA_DIR / "my_list.csv"
 CACHE_DIR = DATA_DIR / "cache"
 TFIDF_CACHE = CACHE_DIR / "tfidf_cache.pkl"
 
-# ACCOUNTS.  A SQLite database with one table, "users": one row per person who
-# can sign in (passwords are stored hashed).  SQLite is a single file and is
-# built into Python, so there is no database server to install or start.
+# ACCOUNTS.  A database with one table, "users": one row per person who can
+# sign in (passwords are stored hashed).  Without a DATABASE_URL (see
+# database_url() below) it is this SQLite file: built into Python, nothing to
+# install -- but it only exists on this one computer.
 DATABASE = DATA_DIR / "cinematch.db"
 
 # Every user gets a folder of their own: data/users/<username>/
@@ -173,14 +174,33 @@ def default_admin_password() -> str:
     matters there, because the server's disk is wiped on every restart and the
     first admin is created again each time.
     """
-    password = os.environ.get("CINEMATCH_ADMIN_PASSWORD")
-    if not password:
+    return _setting("CINEMATCH_ADMIN_PASSWORD") or DEFAULT_ADMIN[1]
+
+
+def _setting(name: str) -> str | None:
+    """A setting from the environment, else from .streamlit/secrets.toml, else None."""
+    value = os.environ.get(name)
+    if not value:
         try:
             import streamlit as st
-            password = st.secrets.get("CINEMATCH_ADMIN_PASSWORD")
+            value = st.secrets.get(name)
         except Exception:          # no secrets file, or not running under Streamlit
-            password = None
-    return str(password or DEFAULT_ADMIN[1])
+            value = None
+    return str(value) if value else None
+
+
+def database_url() -> str | None:
+    """The online PostgreSQL database the accounts are kept in, if one is set.
+
+    DATABASE_URL, from the environment or the app's secrets, looks like
+        postgresql://user:password@host/dbname?sslmode=require
+    (a free database from neon.tech or supabase.com gives one).  With it, every
+    device and every deployment signs in against the same accounts.  Without
+    it, accounts stay in the local SQLite file, DATABASE.
+    """
+    return _setting("DATABASE_URL")
+
+
 MIN_PASSWORD_LENGTH = 6
 PASSWORD_ITERATIONS = 100_000      # PBKDF2 rounds: slow to guess, quick to check once
 

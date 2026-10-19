@@ -401,14 +401,23 @@ def test_messy_data() -> None:
 # data/activity_log.csv and data/users/ are never touched.
 
 class scratch_accounts:
-    """Context manager: point every account path at data/_test_accounts/."""
+    """Context manager: point every account path at data/_test_accounts/.
 
-    NAMES = ("DATABASE", "USERS_DIR", "ACTIVITY_LOG_CSV")
+    The accounts go in a scratch SQLite file even when a DATABASE_URL is set,
+    so the tests never touch the real online accounts -- unless online= gives
+    the URL of a test database (see test_online_accounts).
+    """
+
+    NAMES = ("DATABASE", "USERS_DIR", "ACTIVITY_LOG_CSV", "database_url")
+
+    def __init__(self, online: str | None = None):
+        self.online = online
 
     def __enter__(self):
         self.root = config.DATA_DIR / "_test_accounts"
         shutil.rmtree(self.root, ignore_errors=True)
         self.saved = {name: getattr(config, name) for name in self.NAMES}
+        config.database_url = lambda: self.online
         config.DATABASE = self.root / "test.db"
         config.USERS_DIR = self.root / "users"
         config.ACTIVITY_LOG_CSV = self.root / "activity_log.csv"
@@ -533,6 +542,114 @@ def test_accounts() -> None:
                     lambda: accounts.authenticate(*config.DEFAULT_ADMIN), accounts.AccountError)
     finally:
         del os.environ["CINEMATCH_ADMIN_PASSWORD"]
+
+    # Moving to an online database: the accounts in the local file are copied
+    # with their hashes and salts, so every password still works afterwards.
+    with scratch_accounts() as scratch:
+        accounts.create_user("alice", "secret1")
+        accounts.change_password("admin", "admin-pass-1")
+        old_file = config.DATABASE
+        config.DATABASE = scratch.root / "new.db"      # stands in for the online database
+        message = accounts.copy_accounts_from(old_file)
+        check("copying moves every account to the new database", "Copied 2" in message, message)
+        check("the copied passwords still work",
+              accounts.authenticate("alice", "secret1")["role"] == "user"
+              and accounts.authenticate("admin", "admin-pass-1")["role"] == "admin")
+        check("the copied admin is used instead of a new first-run admin",
+              not accounts.using_default_password())
+        check("copying again leaves the accounts already there alone",
+              "Copied 0" in accounts.copy_accounts_from(old_file))
+
+
+def test_online_accounts() -> None:
+    """The same account rules in PostgreSQL (the DATABASE_URL database).
+
+    Runs only when CINEMATCH_TEST_DATABASE_URL is set.  Everything happens in a
+    schema of its own, cinematch_test, which is dropped afterwards, so even the
+    real online database can be given: its own users table is never touched.
+    """
+    section("8b. Accounts in an online PostgreSQL database")
+    url = os.environ.get("CINEMATCH_TEST_DATABASE_URL")
+    if not url:
+        print("  SKIP  set CINEMATCH_TEST_DATABASE_URL to run these")
+        return
+    import psycopg
+    from psycopg.conninfo import make_conninfo
+
+    from cinematch import accounts
+
+    def reset_schema(create: bool) -> None:
+        with psycopg.connect(url, autocommit=True) as db:
+            db.execute("DROP SCHEMA IF EXISTS cinematch_test CASCADE")
+            if create:
+                db.execute("CREATE SCHEMA cinematch_test")
+
+    def raw_sql(statement: str, *values) -> bool:
+        """True if the database accepted the statement."""
+        try:
+            with psycopg.connect(test_url) as db:
+                db.execute(statement, values)
+            return True
+        except psycopg.IntegrityError:
+            return False
+
+    reset_schema(create=True)
+    test_url = make_conninfo(url, options="-c search_path=cinematch_test")
+    try:
+        with scratch_accounts(online=test_url) as scratch:
+            users = accounts.read_users()
+            check("the first run creates one admin online",
+                  list(users["username"]) == ["admin"] and list(users["role"]) == ["admin"])
+            info = accounts.database_info()
+            check("database_info names the online database",
+                  info["kind"] == "PostgreSQL" and info["online"], str(info))
+
+            accounts.create_user("Alice", "secret1")
+            check("a new account can sign in", accounts.authenticate("alice", "secret1") is not None)
+            refused("a wrong password is refused",
+                    lambda: accounts.authenticate("alice", "wrong-password"))
+            refused("a duplicate username is refused",
+                    lambda: accounts.create_user("alice", "secret1"), accounts.AccountError)
+            refused("the last admin cannot be demoted",
+                    lambda: accounts.set_role("admin", "user", changed_by="admin"),
+                    accounts.AccountError)
+            refused("the last admin cannot be deleted",
+                    lambda: accounts.delete_user("admin", deleted_by="alice"),
+                    accounts.AccountError)
+            accounts.set_role("alice", "admin", changed_by="admin")
+            accounts.set_role("admin", "user", changed_by="alice")
+            check("with two admins, one can step down",
+                  accounts.get_user("admin")["role"] == "user")
+            accounts.set_role("admin", "admin", changed_by="alice")
+
+            insert = ("INSERT INTO users (username, password_hash, salt, role, created_on) "
+                      "VALUES (%s, 'x', 'x', %s, 'now')")
+            check("the database only accepts the roles admin and user",
+                  not raw_sql(insert, "carol", "superuser") and raw_sql(insert, "carol", "user"))
+            check("the database refuses a duplicate username", not raw_sql(insert, "carol", "user"))
+            check("the database refuses an uppercase username", not raw_sql(insert, "Dave", "user"))
+            accounts.delete_user("alice", deleted_by="admin")
+            check("the database will not delete the last admin",
+                  not raw_sql("DELETE FROM users WHERE role = 'admin'"))
+            check("the database will not demote the last admin",
+                  not raw_sql("UPDATE users SET role = 'user' WHERE role = 'admin'"))
+            check("an injection attempt in the sign-in form is just a wrong name",
+                  accounts.get_user("admin' OR '1'='1") is None)
+
+            # Accounts made on this computer before DATABASE_URL was set.
+            config.database_url = lambda: None
+            config.DATABASE = scratch.root / "local.db"
+            accounts.create_user("bob", "bobpass1")
+            config.database_url = lambda: test_url
+            message = accounts.copy_accounts_from(config.DATABASE)
+            check("local accounts are copied online, keeping their passwords",
+                  "Copied 1 account(s): bob" in message
+                  and accounts.authenticate("bob", "bobpass1")["role"] == "user", message)
+    finally:
+        entry = accounts._pools.pop(test_url, None)
+        if entry:
+            entry["pool"].close()
+        reset_schema(create=False)
 
 
 def _movie(movies: pd.DataFrame, title: str, year: int | None = None) -> pd.Series:
@@ -813,6 +930,7 @@ def main() -> int:
         test_my_list(movies)
         test_messy_data()
         test_accounts()
+        test_online_accounts()
         profile, genre_interest = test_activity(movies)
         behaviour = test_collaborative(movies)
         test_patterns(movies, profile, genre_interest, behaviour)

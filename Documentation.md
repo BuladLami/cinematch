@@ -172,7 +172,8 @@ All paths and constants in one place.
 | `SOURCE_DIR`, `METADATA_CSV`, `CREDITS_CSV`, `KEYWORDS_CSV` | The read-only source dataset |
 | `RATINGS_CSV`, `LINKS_CSV` | MovieLens `ratings_small.csv` and `links_small.csv` (read only) |
 | `CATALOGUE_CSV` | `data/catalogue.csv`, the merged catalogue |
-| `DATABASE` | `data/cinematch.db`, the accounts database |
+| `DATABASE` | `data/cinematch.db`, the accounts database (when no `DATABASE_URL` is set) |
+| `database_url()` | `DATABASE_URL` from the environment or secrets: the online PostgreSQL accounts database |
 | `USERS_DIR`, `my_list_path()`, `activity_path()` | `data/users/<name>/my_list.csv` and `activity.csv` |
 | `ACTIVITY_LOG_CSV` | `data/activity_log.csv`: sign-ins, account changes, admin actions |
 | `TFIDF_CACHE` | The saved model |
@@ -249,11 +250,15 @@ signed-in `username`.
 
 ### 4.5 `accounts.py`: users, roles and the activity log
 
-One SQLite table, `users` (id, username, password_hash, salt, role, created_on,
-last_login). The rules live in the table: `CHECK (role IN ('admin','user'))`,
-`UNIQUE (username)`, and two triggers that refuse to delete or demote the last
+One table, `users` (id, username, password_hash, salt, role, created_on,
+last_login), in SQLite (`data/cinematch.db`) or, when `DATABASE_URL` is set, in
+an online PostgreSQL database so every device shares the accounts. The rules
+live in the table in both: `CHECK (role IN ('admin','user'))`,
+`UNIQUE (username)`, and triggers that refuse to delete or demote the last
 admin. Passwords are PBKDF2-SHA256 (100,000 rounds, random salt per account),
-compared with `hmac.compare_digest`. Every query uses `?` placeholders.
+compared with `hmac.compare_digest`. Every query uses placeholders. PostgreSQL
+connections are kept in a small pool (`psycopg_pool`), since opening one over
+the internet is slow.
 
 | Function | Purpose |
 |---|---|
@@ -261,6 +266,7 @@ compared with `hmac.compare_digest`. Every query uses `?` placeholders.
 | `create_user()`, `change_password()`, `set_role()`, `delete_user()` | Account CRUD; deleting also removes `data/users/<name>/` |
 | `read_users()`, `get_user()`, `database_info()` | Reads, never exposing hashes |
 | `log()`, `read_log()` | `data/activity_log.csv` |
+| `copy_accounts_from()` | Copies a SQLite file's accounts into the database in use, hashes and all (`python -m cinematch.accounts`) |
 
 ### 4.6 `activity.py`: recording behaviour and learning from it
 
@@ -502,7 +508,7 @@ account deletes the folder. Admins can view any user's learned pattern on
 | `movies data/movies_metadata.csv`, `credits.csv`, `keywords.csv` | nobody | read only |
 | `movies data/ratings_small.csv`, `links_small.csv` | nobody | read only |
 | `data/catalogue.csv` | `build_catalogue()` | create, then read |
-| `data/cinematch.db` | `accounts.py` | SQLite (users table) |
+| `data/cinematch.db` | `accounts.py` | SQLite (users table), unless `DATABASE_URL` points to PostgreSQL |
 | `data/activity_log.csv` | `accounts.log()` | append |
 | `data/users/<name>/my_list.csv` | the My List functions | read / write |
 | `data/users/<name>/activity.csv` | `activity.record()` | append; rewritten by *Forget*, deleted by *Clear* |
@@ -533,7 +539,8 @@ movies worth recommending and the 18 columns it uses.
 
 ## 10. Testing
 
-`python test_cinematch.py`: plain Python, no test framework, **162 checks**.
+`python test_cinematch.py`: plain Python, no test framework, **166 checks**, plus 15 for the online
+accounts database when `CINEMATCH_TEST_DATABASE_URL` is set.
 
 | Group | Checks | Highlights |
 |---|---|---|
@@ -544,7 +551,8 @@ movies worth recommending and the 18 columns it uses.
 | 5. Caching | 6 | Written, reused, rejected after a data change |
 | 6. My List CRUD | 23 | Every action changes the file; bad input refused |
 | 7. Messy data | 4 | A movie with no text returns nothing instead of crashing |
-| 8. Accounts | 30 | Hashing, roles, last-admin rules, raw SQL refusals, injection, admin password from a deployment secret |
+| 8. Accounts | 34 | Hashing, roles, last-admin rules, raw SQL refusals, injection, admin password from a deployment secret, copying accounts to a new database |
+| 8b. Online accounts | 15 | The same rules in PostgreSQL, in a throwaway schema; runs only when `CINEMATCH_TEST_DATABASE_URL` is set |
 | 9. Learning from activity | 16 | pick > search > view, half-life, click cap, typed search, genres, dislikes, forget / clear |
 | 10. Collaborative filtering | 8 | Co-liked movies close, MovieLens centred, Toy Story → family films, accounts as viewers, works without the MovieLens files |
 | 11. Patterns | 22 | Nolan, Dark Knight series, rising sci-fi, nothing touched recommended, sequel first, behaviour used, *Because you liked* rows without repeats |
